@@ -1,0 +1,26 @@
+# Python / Virtualenvs
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local secrets / credentials (never commit)
+credentials.json
+token.json
+accounts.json
+sessions.json
+*.lock
+.env
