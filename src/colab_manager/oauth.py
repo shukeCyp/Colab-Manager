@@ -52,8 +52,7 @@ def load_oauth_client_config(config_path: Optional[str] = None) -> Dict[str, Any
         return json.loads(config_resource.read_text(encoding="utf-8"))
 
     raise FileNotFoundError(
-        "Could not locate OAuth client config (neither ~/.colab-cli-oauth-config.json "
-        "nor bundled colab_cli/oauth_config.json)."
+        "未找到 OAuth 客户端配置文件（既没有 ~/.colab-cli-oauth-config.json，也未找到内置的 colab_cli/oauth_config.json）。"
     )
 
 
@@ -78,17 +77,17 @@ def run_interactive_oauth_flow(
 
     auth_url, _ = flow.authorization_url(**url_kwargs)
 
-    print("\nTo authorize this Google account, open the URL below in a browser")
-    print("(Tip: open in an Incognito window or target Chrome Profile for multi-account login):\n")
+    print("\n请在浏览器中打开下方链接以授权该 Google 账号")
+    print("（提示：多账号登录建议复制到无痕窗口或对应的 Chrome 配置文件中打开）：\n")
     print(f"  {auth_url}\n")
 
     if open_browser:
         webbrowser.open(auth_url)
 
-    print("After approving, Google will display an authorization code.")
-    code = input("Enter the authorization code: ").strip()
+    print("完成登录并同意授权后，Google 页面会显示一串授权码（Authorization Code）。")
+    code = input("请粘贴授权码并回车: ").strip()
     if not code:
-        raise ValueError("Authorization code cannot be empty.")
+        raise ValueError("授权码不能为空。")
 
     flow.fetch_token(code=code)
     creds = flow.credentials
@@ -99,7 +98,7 @@ def read_native_colab_token() -> Tuple[Dict[str, Any], str]:
     """Read the currently authenticated token from native colab-cli keyring or legacy file."""
     token_json = keyring.get_password(KEYRING_SERVICE_NAME, KEYRING_USERNAME)
     if token_json:
-        return normalize_authorized_user_info(json.loads(token_json)), "keyring"
+        return normalize_authorized_user_info(json.loads(token_json)), "系统钥匙串"
 
     legacy = Path(LEGACY_TOKEN_PATH)
     if legacy.is_file():
@@ -109,7 +108,7 @@ def read_native_colab_token() -> Tuple[Dict[str, Any], str]:
         )
 
     raise FileNotFoundError(
-        "No existing login found in native colab-cli keyring or ~/.config/colab-cli/token.json."
+        "未在原生 colab 系统钥匙串或 ~/.config/colab-cli/token.json 中找到已登录的凭证。"
     )
 
 
@@ -140,8 +139,7 @@ def ensure_fresh_credentials(
     if not creds.valid:
         if not creds.refresh_token:
             raise RuntimeError(
-                f"Account '{alias}' token expired and has no refresh_token. "
-                f"Run `cm auth login {alias}` to re-authenticate."
+                f"账号 '{alias}' 的访问令牌已过期且没有 refresh_token，请运行 `cm auth login {alias}` 重新登录。"
             )
         creds.refresh(Request())
         if creds.token != old_token:

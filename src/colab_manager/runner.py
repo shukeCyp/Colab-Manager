@@ -22,7 +22,7 @@ def find_colab_executable() -> str:
     if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
         return candidate
     raise FileNotFoundError(
-        "Could not find `colab` executable on PATH. Install `google-colab-cli` first."
+        "未在 PATH 中找到 `colab` 可执行文件，请先安装 `google-colab-cli`。"
     )
 
 
@@ -36,7 +36,7 @@ def build_colab_invocation(
     creds_path = store.credentials_path(resolved)
     if not creds_path.exists():
         raise FileNotFoundError(
-            f"Credentials missing for account '{resolved}'. Run `cm auth login {resolved}`."
+            f"账号 '{resolved}' 缺少凭证文件，请先运行 `cm auth login {resolved}` 重新授权。"
         )
     sessions_path = store.sessions_path(resolved)
     sessions_path.parent.mkdir(parents=True, exist_ok=True)

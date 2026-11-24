@@ -1,9 +1,9 @@
-"""Rich terminal rendering for usage dashboards, sessions, and auth checks."""
+"""Rich 终端中文表格与监控面板渲染。"""
 
 from __future__ import annotations
 
 from collections import Counter
-from typing import Iterable, List, Optional
+from typing import List, Optional
 
 from rich import box
 from rich.console import Console, Group, RenderableType
@@ -18,7 +18,7 @@ from colab_manager.models import (
     AuthCheckReport,
 )
 
-# Priority order so top-tier accelerators appear first
+# 按算力档次排序，高端卡靠前展示
 _GPU_ORDER = ["H100", "A100", "G4", "L4", "T4"]
 _TPU_ORDER = ["V6E1", "V5E1"]
 
@@ -45,23 +45,31 @@ def _format_rate(rate: Optional[float]) -> Text:
     if rate is None:
         return Text("-", style="dim")
     if rate <= 0:
-        return Text("0.00/hr", style="dim")
-    return Text(f"{rate:.2f}/hr", style="bold cyan")
+        return Text("0.00/时", style="dim")
+    return Text(f"{rate:.2f}/时", style="bold cyan")
 
 
 def _format_est_left(hours: Optional[float], rate: Optional[float]) -> Text:
     if rate is None:
         return Text("-", style="dim")
     if rate <= 0:
-        return Text("idle", style="dim")
+        return Text("空闲", style="dim")
     if hours is None:
         return Text("-", style="dim")
     if hours >= 48:
         days = hours / 24.0
-        return Text(f"~{days:.1f}d", style="green")
+        return Text(f"约{days:.1f}天", style="green")
     if hours >= 10:
-        return Text(f"~{hours:.1f}h", style="yellow")
-    return Text(f"~{hours:.1f}h", style="bold red")
+        return Text(f"约{hours:.1f}时", style="yellow")
+    return Text(f"约{hours:.1f}时", style="bold red")
+
+
+def _format_shape_cn(shape: str) -> str:
+    if shape == "High-RAM":
+        return "高内存"
+    if shape == "Standard":
+        return "标准"
+    return shape
 
 
 def _format_active_summary(report: AccountUsageReport) -> Text:
@@ -72,7 +80,7 @@ def _format_active_summary(report: AccountUsageReport) -> Text:
 
     if report.assignments:
         counts = Counter(
-            f"{a.accelerator}" + ("-HM" if a.machine_shape == "High-RAM" else "")
+            f"{a.accelerator}" + ("-高内存" if a.machine_shape == "High-RAM" else "")
             for a in report.assignments
         )
         parts = [f"{cnt}x{hw}" if cnt > 1 else hw for hw, cnt in counts.items()]
@@ -110,7 +118,7 @@ def _format_eligible(gpus: List[str], tpus: List[str]) -> Text:
 def build_usage_renderable(
     reports: List[AccountUsageReport],
     *,
-    title: str = "Colab Multi-Account Usage Overview",
+    title: str = "Colab 多账号算力总览",
     show_eligible: bool = True,
 ) -> RenderableType:
     table = Table(
@@ -128,40 +136,47 @@ def build_usage_renderable(
     total_active = sum(r.assignments_count for r in ok_reports)
     total_est = (total_balance / total_rate) if total_rate > 0 else None
 
+    if total_est and total_est >= 48:
+        total_est_str = f"约{total_est/24:.1f}天"
+    elif total_est:
+        total_est_str = f"约{total_est:.1f}时"
+    else:
+        total_est_str = "空闲"
+
     table.add_column(
-        "Account",
+        "账号",
         style="bold",
-        footer=f"Total ({len(ok_reports)}/{len(reports)} ok)",
+        footer=f"合计 ({len(ok_reports)}/{len(reports)} 正常)",
     )
     table.add_column(
-        "Balance",
+        "余额(CU)",
         justify="right",
         no_wrap=True,
         footer=f"[bold green]{total_balance:,.2f}[/]",
     )
     table.add_column(
-        "Rate",
+        "消耗速率",
         justify="right",
         no_wrap=True,
-        footer=f"[bold cyan]{total_rate:.2f}/hr[/]",
+        footer=f"[bold cyan]{total_rate:.2f}/时[/]",
     )
     table.add_column(
-        "Est.",
+        "预计续航",
         justify="right",
         no_wrap=True,
-        footer=f"~{total_est/24:.1f}d" if (total_est and total_est >= 48) else (f"~{total_est:.1f}h" if total_est else "idle"),
+        footer=total_est_str,
     )
     table.add_column(
-        "Active",
+        "运行实例",
         no_wrap=True,
         footer=f"[bold magenta]{total_active}[/]",
     )
     if show_eligible:
-        table.add_column("Eligible GPUs / TPUs", footer="")
+        table.add_column("可用 GPU / TPU", footer="")
     table.add_column(
-        "Status",
+        "状态",
         no_wrap=True,
-        footer=f"[red]{len(err_reports)} err[/]" if err_reports else "[green]OK[/]",
+        footer=f"[red]{len(err_reports)} 异常[/]" if err_reports else "[green]正常[/]",
     )
 
     for r in reports:
@@ -174,7 +189,7 @@ def build_usage_renderable(
         if r.email:
             acct_label.append(f"\n  {r.email}", style="dim")
 
-        status_text = Text("OK", style="green") if r.ok else Text("ERR", style="bold red")
+        status_text = Text("正常", style="green") if r.ok else Text("异常", style="bold red")
 
         row = [
             acct_label,
@@ -192,10 +207,10 @@ def build_usage_renderable(
         return table
 
     error_lines = [
-        Text(f"  [{r.alias}] {r.error or 'Unknown error'}", style="red")
+        Text(f"  [{r.alias}] {r.error or '未知错误'}", style="red")
         for r in err_reports
     ]
-    return Group(table, Text("Errors:", style="bold red"), *error_lines)
+    return Group(table, Text("异常详情:", style="bold red"), *error_lines)
 
 
 def render_usage_table(
@@ -205,7 +220,7 @@ def render_usage_table(
     show_eligible: bool = True,
 ) -> None:
     if not reports:
-        console.print("[yellow]No accounts matched. Run `cm auth import` or `cm auth add <alias>` first.[/]")
+        console.print("[yellow]未匹配到任何账号。请先运行 `cm import` 或 `cm add <别名>` 添加账号。[/]")
         return
     console.print(build_usage_renderable(reports, show_eligible=show_eligible))
 
@@ -223,32 +238,32 @@ def render_sessions_table(
             rows.extend(r.assignments)
 
     table = Table(
-        title=f"Active Colab Sessions Across {len(reports)} Account(s)",
+        title=f"所有账号活跃实例总览（共查询 {len(reports)} 个账号）",
         box=box.ROUNDED,
         header_style="bold white",
     )
-    table.add_column("Account", style="bold")
-    table.add_column("Session")
-    table.add_column("Hardware", style="bold cyan")
-    table.add_column("Shape")
-    table.add_column("Endpoint", style="dim")
-    table.add_column("Token TTL", justify="right")
+    table.add_column("账号", style="bold", no_wrap=True)
+    table.add_column("会话名")
+    table.add_column("硬件", style="bold cyan", no_wrap=True)
+    table.add_column("内存规格", no_wrap=True)
+    table.add_column("实例节点 (Endpoint)", style="dim")
+    table.add_column("令牌剩余", justify="right", no_wrap=True)
 
     for a in rows:
         sess_text = (
             Text(a.session_name, style="bold green")
             if a.session_name
-            else Text("(web/untracked)", style="dim yellow")
+            else Text("(网页端/未托管)", style="dim yellow")
         )
         ttl = "-"
         if a.token_expires_in_seconds is not None:
             mins = a.token_expires_in_seconds // 60
-            ttl = f"{mins}m"
+            ttl = f"{mins}分钟"
         table.add_row(
             a.alias,
             sess_text,
             a.accelerator,
-            a.machine_shape,
+            _format_shape_cn(a.machine_shape),
             a.endpoint,
             ttl,
         )
@@ -256,10 +271,10 @@ def render_sessions_table(
     if rows:
         console.print(table)
     else:
-        console.print("[dim]No active remote Colab assignments found across queried accounts.[/]")
+        console.print("[dim]当前查询的账号下没有正在运行的 Colab 实例。[/]")
 
     for err in errors:
-        console.print(f"[red][{err.alias}] Query failed: {err.error}[/]")
+        console.print(f"[red][{err.alias}] 查询失败: {err.error}[/]")
 
 
 def render_accounts_table(
@@ -273,25 +288,25 @@ def render_accounts_table(
     if not accounts:
         console.print(
             Panel(
-                "No accounts registered yet.\n\n"
-                "  [bold]cm auth import[/]            Import currently logged-in native `colab` account\n"
-                "  [bold]cm auth add <alias>[/]       Sign in a new Google account via browser OAuth",
-                title="Colab Manager",
+                "尚未添加任何账号。\n\n"
+                "  [bold]cm import [别名][/]         一键导入本机原生 `colab` 已登录账号\n"
+                "  [bold]cm add <别名>[/]            通过浏览器 OAuth 登录新增 Google 账号",
+                title="Colab 多账号管理器",
                 border_style="yellow",
             )
         )
         return
 
     table = Table(
-        title="Managed Colab Accounts",
+        title="已管理的 Colab 账号列表",
         box=box.ROUNDED,
         header_style="bold white",
     )
-    table.add_column("Alias", style="bold")
-    table.add_column("Email")
-    table.add_column("Note")
-    table.add_column("Local Sessions", justify="right")
-    table.add_column("Credentials")
+    table.add_column("别名", style="bold", no_wrap=True)
+    table.add_column("邮箱")
+    table.add_column("备注")
+    table.add_column("本地会话", justify="right", no_wrap=True)
+    table.add_column("凭证状态", no_wrap=True)
 
     for rec in accounts:
         alias_text = Text()
@@ -305,7 +320,7 @@ def render_accounts_table(
             rec.email or "[dim]-[/]",
             rec.note or "[dim]-[/]",
             str(local_session_counts.get(rec.alias, 0)),
-            "[green]ready[/]" if cred_ok else "[red]missing[/]",
+            "[green]就绪[/]" if cred_ok else "[red]缺失[/]",
         )
 
     console.print(table)
@@ -313,16 +328,16 @@ def render_accounts_table(
 
 def render_auth_check_table(console: Console, reports: List[AuthCheckReport]) -> None:
     table = Table(
-        title="OAuth Credential Health Check",
+        title="OAuth 凭证健康检查",
         box=box.ROUNDED,
         header_style="bold white",
     )
-    table.add_column("Account", style="bold", no_wrap=True)
-    table.add_column("Email", overflow="ellipsis")
-    table.add_column("Refresh", justify="center", no_wrap=True)
-    table.add_column("TTL", justify="right", no_wrap=True)
-    table.add_column("Scopes", justify="right", no_wrap=True)
-    table.add_column("Status", no_wrap=True)
+    table.add_column("账号", style="bold", no_wrap=True)
+    table.add_column("邮箱", overflow="ellipsis")
+    table.add_column("刷新令牌", justify="center", no_wrap=True)
+    table.add_column("访问剩余", justify="right", no_wrap=True)
+    table.add_column("权限数", justify="right", no_wrap=True)
+    table.add_column("状态", no_wrap=True)
 
     errors: List[AuthCheckReport] = []
     for r in reports:
@@ -333,16 +348,16 @@ def render_auth_check_table(console: Console, reports: List[AuthCheckReport]) ->
 
         ttl = "-"
         if r.expires_in_seconds is not None:
-            ttl = f"{r.expires_in_seconds // 60}m"
+            ttl = f"{r.expires_in_seconds // 60}分钟"
 
         if not r.ok:
             errors.append(r)
 
-        status = Text("OK", style="bold green") if r.ok else Text("FAIL", style="bold red")
+        status = Text("正常", style="bold green") if r.ok else Text("失败", style="bold red")
         table.add_row(
             alias_text,
             r.live_email or r.recorded_email or "-",
-            "[green]yes[/]" if r.has_refresh_token else "[red]no[/]",
+            "[green]有[/]" if r.has_refresh_token else "[red]无[/]",
             ttl,
             str(len(r.scopes)) if r.scopes else "-",
             status,
@@ -350,6 +365,6 @@ def render_auth_check_table(console: Console, reports: List[AuthCheckReport]) ->
 
     console.print(table)
     if errors:
-        console.print("[bold red]Errors:[/]")
+        console.print("[bold red]异常详情:[/]")
         for r in errors:
-            console.print(f"  [red][{r.alias}] {r.error or 'Unknown error'}[/]")
+            console.print(f"  [red][{r.alias}] {r.error or '未知错误'}[/]")

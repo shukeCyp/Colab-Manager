@@ -109,7 +109,7 @@ class ColabAccountClient:
         resp = self._request_json(f"unassign/{endpoint}", method="GET")
         xsrf_token = resp.get("token")
         if not xsrf_token:
-            raise RuntimeError(f"Missing XSRF token when unassigning '{endpoint}'.")
+            raise RuntimeError(f"停止实例 '{endpoint}' 时未获取到 XSRF Token。")
         self._request_json(
             f"unassign/{endpoint}",
             method="POST",
@@ -298,7 +298,7 @@ def check_account_auth(
             live_email=live_email,
             is_default=is_default,
             ok=len(missing) == 0,
-            error=f"Missing scopes: {', '.join(missing)}" if missing else None,
+            error=f"缺少必要权限 (Scopes): {', '.join(missing)}" if missing else None,
             expires_in_seconds=expires_in,
             has_refresh_token=has_refresh,
             missing_scopes=missing,
@@ -376,7 +376,7 @@ def unassign_account_sessions(
         else:
             endpoints_to_stop = [target]
     else:
-        raise ValueError("Specify a session/endpoint target or pass --all.")
+        raise ValueError("请指定要停止的会话名/节点 ID，或传入 --all 参数。")
 
     stopped: List[str] = []
     for ep in endpoints_to_stop:

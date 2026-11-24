@@ -152,7 +152,7 @@ def test_cli_account_crud_from_file_and_sessions_json(tmp_path: Path, monkeypatc
             ["auth", "add", "acc1", "--from-file", str(cred_file), "--note", "first"],
         )
         assert r_add.exit_code == 0
-        assert "Saved account acc1" in r_add.stdout
+        assert "已保存账号 acc1" in r_add.stdout
 
     r_ls = runner.invoke(app, ["ls"])
     assert r_ls.exit_code == 0
@@ -181,7 +181,7 @@ def test_cli_account_crud_from_file_and_sessions_json(tmp_path: Path, monkeypatc
 
     r_rm = runner.invoke(app, ["auth", "rm", "work", "--yes"])
     assert r_rm.exit_code == 0
-    assert "Removed account work" in r_rm.stdout
+    assert "已删除账号 work" in r_rm.stdout
 
 
 def test_main_at_alias_and_best_shortcut_dispatch(tmp_path: Path, monkeypatch):

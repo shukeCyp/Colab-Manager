@@ -1,4 +1,4 @@
-"""CLI entry point for colab-manager (`colabm` / `cm`)."""
+"""Colab 多账号管理器命令行入口（`colabm` / `cm`）。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,21 @@ from typing import List, Optional
 import typer
 from rich.console import Console
 from rich.live import Live
+from typer import rich_utils as _typer_rich_utils
 from typing_extensions import Annotated
+
+# 安全将 Typer 帮助面板标题汉化（不影响升级兼容性）
+for _attr, _label in (
+    ("USAGE_PREFIX", "用法: "),
+    ("ARGUMENTS_PANEL_TITLE", "位置参数"),
+    ("OPTIONS_PANEL_TITLE", "选项"),
+    ("COMMANDS_PANEL_TITLE", "子命令"),
+    ("ERRORS_PANEL_TITLE", "错误"),
+    ("DEFAULT_STRING", "[默认: {}]"),
+    ("REQUIRED_LONG_STRING", "[必填]"),
+):
+    if hasattr(_typer_rich_utils, _attr):
+        setattr(_typer_rich_utils, _attr, _label)
 
 from colab_manager import __version__
 from colab_manager.api import (
@@ -45,16 +59,17 @@ err_console = Console(stderr=True)
 app = typer.Typer(
     name="colabm",
     help=(
-        "Multi-account manager for Google Colab CLI (`colab`).\n\n"
-        "Shortcut: run `cm @<alias> <colab args...>` (or `cm @best ...`) "
-        "to execute any native `colab` command under that account."
+        "Google Colab CLI (`colab`) 单机多账号管理与全量算力监控工具。\n\n"
+        "快捷用法：使用 `cm @<别名> <原生 colab 参数...>`（或 `cm @best ...`）"
+        "直接以指定账号透传执行任意原生 `colab` 命令。"
     ),
     no_args_is_help=True,
+    add_completion=False,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 
 auth_app = typer.Typer(
-    help="Manage Google accounts, OAuth credentials, and token health.",
+    help="管理 Google 账号、OAuth 凭证与令牌健康状态。",
     no_args_is_help=True,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
@@ -135,12 +150,12 @@ def _pick_best_account(
         tpu=tpu,
     )
     if not candidates:
-        raise RuntimeError("No healthy account matched the selection criteria.")
+        raise RuntimeError("没有符合筛选条件的健康账号。")
     return candidates[0]
 
 
 def _extract_flag_value(args: List[str], flag_name: str) -> Optional[str]:
-    """Extract `--gpu T4` or `--gpu=T4` from arbitrary forwarded colab args."""
+    """从透传参数中提取 `--gpu T4` 或 `--gpu=T4` 的值。"""
     prefix = f"{flag_name}="
     for i, token in enumerate(args):
         if token == flag_name and i + 1 < len(args):
@@ -151,7 +166,7 @@ def _extract_flag_value(args: List[str], flag_name: str) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
-# Auth / Account Management Commands
+# 账号与凭证管理命令
 # ---------------------------------------------------------------------------
 
 
@@ -168,19 +183,19 @@ def _do_auth_add(
     try:
         alias = validate_alias(alias)
     except ValueError as e:
-        err_console.print(f"[red]Error:[/] {e}")
+        err_console.print(f"[red]错误:[/] {e}")
         raise typer.Exit(code=1)
 
     if from_file is not None:
         if not from_file.is_file():
-            err_console.print(f"[red]Error:[/] Credential file not found: {from_file}")
+            err_console.print(f"[red]错误:[/] 找不到凭证文件: {from_file}")
             raise typer.Exit(code=1)
         try:
             cred_data = normalize_authorized_user_info(
                 json.loads(from_file.read_text(encoding="utf-8"))
             )
         except Exception as e:
-            err_console.print(f"[red]Error:[/] Invalid JSON file: {e}")
+            err_console.print(f"[red]错误:[/] 凭证 JSON 格式无效: {e}")
             raise typer.Exit(code=1)
     else:
         try:
@@ -189,10 +204,10 @@ def _do_auth_add(
                 open_browser=open_browser,
             )
         except KeyboardInterrupt:
-            err_console.print("\n[yellow]Cancelled.[/]")
+            err_console.print("\n[yellow]已取消操作。[/]")
             raise typer.Exit(code=130)
         except Exception as e:
-            err_console.print(f"[red]OAuth flow failed:[/] {e}")
+            err_console.print(f"[red]OAuth 授权失败:[/] {e}")
             raise typer.Exit(code=1)
 
     email = extract_email_from_credentials(cred_data)
@@ -200,8 +215,7 @@ def _do_auth_add(
         existing_email = store.find_by_email(email)
         if existing_email and existing_email.alias != alias:
             err_console.print(
-                f"[yellow]Warning:[/] Email [bold]{email}[/] is already registered "
-                f"under alias [bold]{existing_email.alias}[/]."
+                f"[yellow]提示:[/] 邮箱 [bold]{email}[/] 此前已绑定到别名 [bold]{existing_email.alias}[/]。"
             )
 
     rec = store.upsert_account(
@@ -212,8 +226,8 @@ def _do_auth_add(
         set_default=set_default,
     )
     console.print(
-        f"[green]Saved account[/] [bold]{rec.alias}[/] "
-        f"({rec.email or 'email unknown'}) -> {store.credentials_path(rec.alias)}"
+        f"[green]已保存账号[/] [bold]{rec.alias}[/] "
+        f"({rec.email or '邮箱未知'}) -> {store.credentials_path(rec.alias)}"
     )
 
 
@@ -228,7 +242,7 @@ def _do_auth_import(
     try:
         cred_data, source = read_native_colab_token()
     except Exception as e:
-        err_console.print(f"[red]Error:[/] {e}")
+        err_console.print(f"[red]错误:[/] {e}")
         raise typer.Exit(code=1)
 
     email = extract_email_from_credentials(cred_data)
@@ -236,7 +250,7 @@ def _do_auth_import(
     try:
         chosen_alias = validate_alias(chosen_alias)
     except ValueError as e:
-        err_console.print(f"[red]Error:[/] {e}")
+        err_console.print(f"[red]错误:[/] {e}")
         raise typer.Exit(code=1)
 
     native_sessions = default_native_sessions_path() if copy_sessions else None
@@ -248,10 +262,10 @@ def _do_auth_import(
         set_default=set_default,
         copy_sessions_from=native_sessions,
     )
-    extra = " (+ sessions.json)" if (native_sessions and native_sessions.exists()) else ""
+    extra = "（已同步 sessions.json）" if (native_sessions and native_sessions.exists()) else ""
     console.print(
-        f"[green]Imported[/] native colab login ({source}) as [bold]{rec.alias}[/] "
-        f"({rec.email or 'email unknown'}){extra}"
+        f"[green]已导入[/]原生 colab 登录态（来源：{source}）为 [bold]{rec.alias}[/] "
+        f"({rec.email or '邮箱未知'}){extra}"
     )
 
 
@@ -272,26 +286,26 @@ def _do_auth_list() -> None:
 
 @auth_app.command("add")
 def auth_add(
-    alias: Annotated[str, typer.Argument(help="Short alias for this account (e.g. acc1, pro, work)")],
-    note: Annotated[str, typer.Option("--note", "-n", help="Optional note/label for this account")] = "",
+    alias: Annotated[str, typer.Argument(help="账号简短别名（例如 acc1、pro、work）")],
+    note: Annotated[str, typer.Option("--note", "-n", help="可选备注标签（例如：主力 Pro+）")] = "",
     from_file: Annotated[
         Optional[Path],
-        typer.Option("--from-file", "-f", help="Import an existing ADC / authorized_user JSON file"),
+        typer.Option("--from-file", "-f", help="直接导入已有的 ADC / authorized_user JSON 凭证文件"),
     ] = None,
     open_browser: Annotated[
         bool,
-        typer.Option("--open", help="Automatically open the OAuth URL in your default browser"),
+        typer.Option("--open", help="自动在系统默认浏览器中打开 OAuth 授权链接"),
     ] = False,
     default: Annotated[
         bool,
-        typer.Option("--default", "-d", help="Set this account as the default"),
+        typer.Option("--default", "-d", help="将该账号设为默认账号"),
     ] = False,
     client_oauth_config: Annotated[
         Optional[str],
-        typer.Option("-c", "--client-oauth-config", help="Optional custom OAuth client JSON path"),
+        typer.Option("-c", "--client-oauth-config", help="自定义 OAuth 客户端配置 JSON 路径"),
     ] = None,
 ) -> None:
-    """Add a new Google account via OAuth login or an existing ADC JSON file."""
+    """通过浏览器 OAuth 登录或本地 ADC 文件新增一个 Google 账号。"""
     _do_auth_add(
         alias,
         note=note,
@@ -306,22 +320,22 @@ def auth_add(
 def auth_import(
     alias: Annotated[
         Optional[str],
-        typer.Argument(help="Alias for the imported account (auto-derived from email if omitted)"),
+        typer.Argument(help="导入后的账号别名（省略则根据邮箱前缀自动生成）"),
     ] = None,
-    note: Annotated[str, typer.Option("--note", "-n", help="Optional note/label")] = "",
+    note: Annotated[str, typer.Option("--note", "-n", help="可选备注标签")] = "",
     copy_sessions: Annotated[
         bool,
         typer.Option(
             "--copy-sessions/--no-copy-sessions",
-            help="Also copy ~/.config/colab-cli/sessions.json into this account",
+            help="是否同时复制 ~/.config/colab-cli/sessions.json 到该账号",
         ),
     ] = True,
     default: Annotated[
         bool,
-        typer.Option("--default", "-d", help="Set as default account"),
+        typer.Option("--default", "-d", help="设为默认账号"),
     ] = False,
 ) -> None:
-    """Import the account currently logged in to native `colab` (OS keyring)."""
+    """一键导入本机原生 `colab`（系统钥匙串）当前已登录的账号。"""
     _do_auth_import(
         alias,
         note=note,
@@ -332,22 +346,22 @@ def auth_import(
 
 @auth_app.command("login")
 def auth_login(
-    alias: Annotated[str, typer.Argument(help="Existing account alias to re-authenticate")],
+    alias: Annotated[str, typer.Argument(help="需要重新授权的已有账号别名")],
     open_browser: Annotated[
         bool,
-        typer.Option("--open", help="Automatically open the OAuth URL in your default browser"),
+        typer.Option("--open", help="自动在默认浏览器中打开 OAuth 授权链接"),
     ] = False,
     client_oauth_config: Annotated[
         Optional[str],
-        typer.Option("-c", "--client-oauth-config", help="Optional custom OAuth client JSON path"),
+        typer.Option("-c", "--client-oauth-config", help="自定义 OAuth 客户端配置 JSON 路径"),
     ] = None,
 ) -> None:
-    """Re-authenticate an existing account without losing its note or sessions."""
+    """对已有账号重新走 OAuth 授权刷新凭证（保留原备注与本地会话）。"""
     store = _get_store()
     try:
         resolved = store.resolve_alias(alias)
     except KeyError as e:
-        err_console.print(f"[red]Error:[/] {e}")
+        err_console.print(f"[red]错误:[/] {e}")
         raise typer.Exit(code=1)
 
     rec = store.get_account(resolved)
@@ -358,22 +372,22 @@ def auth_login(
             login_hint=rec.email if rec else None,
         )
     except KeyboardInterrupt:
-        err_console.print("\n[yellow]Cancelled.[/]")
+        err_console.print("\n[yellow]已取消操作。[/]")
         raise typer.Exit(code=130)
     except Exception as e:
-        err_console.print(f"[red]OAuth flow failed:[/] {e}")
+        err_console.print(f"[red]OAuth 授权失败:[/] {e}")
         raise typer.Exit(code=1)
 
     email = extract_email_from_credentials(cred_data)
     updated = store.upsert_account(resolved, cred_data, email=email)
     console.print(
-        f"[green]Refreshed credentials for[/] [bold]{updated.alias}[/] ({updated.email or 'email unknown'})"
+        f"[green]已刷新账号凭证[/] [bold]{updated.alias}[/] ({updated.email or '邮箱未知'})"
     )
 
 
 @auth_app.command("ls")
 def auth_ls() -> None:
-    """List all managed accounts."""
+    """列出所有已管理的账号。"""
     _do_auth_list()
 
 
@@ -381,23 +395,23 @@ def auth_ls() -> None:
 def auth_check(
     aliases: Annotated[
         Optional[List[str]],
-        typer.Argument(help="Account aliases to check (default: all accounts)"),
+        typer.Argument(help="要检查的账号别名（省略则检查全部账号）"),
     ] = None,
-    as_json: Annotated[bool, typer.Option("--json", help="Output raw JSON")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help="以 JSON 格式输出原始结果")] = False,
 ) -> None:
-    """Concurrently verify token validity, refresh capability, scopes, and email for all accounts."""
+    """并发检查所有账号的令牌有效性、刷新能力、权限范围与绑定邮箱。"""
     store = _get_store()
     try:
         reports = check_accounts_auth_concurrent(store, aliases or None)
     except KeyError as e:
-        err_console.print(f"[red]Error:[/] {e}")
+        err_console.print(f"[red]错误:[/] {e}")
         raise typer.Exit(code=1)
 
     if as_json:
         typer.echo(json.dumps([r.model_dump(mode="json") for r in reports], indent=2))
     else:
         if not reports:
-            console.print("[yellow]No accounts registered yet.[/]")
+            console.print("[yellow]尚未添加任何账号。请先运行 `cm import` 或 `cm add <别名>`。[/]")
         else:
             render_auth_check_table(console, reports)
 
@@ -407,121 +421,124 @@ def auth_check(
 
 @auth_app.command("rm")
 def auth_rm(
-    alias: Annotated[str, typer.Argument(help="Account alias to delete")],
-    yes: Annotated[bool, typer.Option("-y", "--yes", help="Skip confirmation prompt")] = False,
+    alias: Annotated[str, typer.Argument(help="要删除的账号别名")],
+    yes: Annotated[bool, typer.Option("-y", "--yes", help="跳过确认提示直接删除")] = False,
 ) -> None:
-    """Remove a managed account and its local credentials/sessions."""
+    """删除一个已管理账号及其本地凭证与会话文件。"""
     store = _get_store()
     rec = store.get_account(alias)
     if not rec:
-        err_console.print(f"[red]Error:[/] Unknown account '{alias}'.")
+        err_console.print(f"[red]错误:[/] 未找到账号 '{alias}'。")
         raise typer.Exit(code=1)
 
     if not yes:
         confirmed = typer.confirm(
-            f"Remove account '{alias}' ({rec.email or 'no email'}) and delete its local credentials?"
+            f"确认删除账号 '{alias}' ({rec.email or '无邮箱'}) 及其本地凭证文件？"
         )
         if not confirmed:
             raise typer.Exit(code=0)
 
     store.remove_account(alias)
-    console.print(f"[green]Removed account[/] [bold]{alias}[/].")
+    console.print(f"[green]已删除账号[/] [bold]{alias}[/]。")
 
 
 @auth_app.command("rename")
 def auth_rename(
-    old_alias: Annotated[str, typer.Argument(help="Current alias")],
-    new_alias: Annotated[str, typer.Argument(help="New alias")],
+    old_alias: Annotated[str, typer.Argument(help="当前别名")],
+    new_alias: Annotated[str, typer.Argument(help="新别名")],
 ) -> None:
-    """Rename an existing account alias."""
+    """重命名已有账号的别名。"""
     store = _get_store()
     try:
         rec = store.rename_account(old_alias, new_alias)
     except (KeyError, ValueError) as e:
-        err_console.print(f"[red]Error:[/] {e}")
+        err_console.print(f"[red]错误:[/] {e}")
         raise typer.Exit(code=1)
-    console.print(f"[green]Renamed[/] [bold]{old_alias}[/] -> [bold]{rec.alias}[/].")
+    console.print(f"[green]已重命名[/] [bold]{old_alias}[/] -> [bold]{rec.alias}[/]。")
 
 
 @auth_app.command("note")
 def auth_note(
-    alias: Annotated[str, typer.Argument(help="Account alias")],
-    note: Annotated[str, typer.Argument(help="Note text (pass empty string '' to clear)")],
+    alias: Annotated[str, typer.Argument(help="账号别名")],
+    note: Annotated[str, typer.Argument(help="备注内容（传空字符串 '' 可清空备注）")],
 ) -> None:
-    """Set or clear a descriptive note for an account."""
+    """设置或清空账号备注标签。"""
     store = _get_store()
     try:
         resolved = store.resolve_alias(alias)
         rec = store.set_note(resolved, note)
     except KeyError as e:
-        err_console.print(f"[red]Error:[/] {e}")
+        err_console.print(f"[red]错误:[/] {e}")
         raise typer.Exit(code=1)
-    console.print(f"[green]Updated note for[/] [bold]{rec.alias}[/]: {rec.note or '(empty)'}")
+    console.print(f"[green]已更新备注[/] [bold]{rec.alias}[/]: {rec.note or '（空）'}")
 
 
-# Top-level ergonomic aliases for auth commands
+# 顶层快捷别名命令
 @app.command("add")
 def top_add(
-    alias: Annotated[str, typer.Argument(help="Short alias for this account (e.g. acc1, pro, work)")],
-    note: Annotated[str, typer.Option("--note", "-n", help="Optional note/label")] = "",
-    from_file: Annotated[Optional[Path], typer.Option("--from-file", "-f", help="Import existing ADC JSON")] = None,
-    open_browser: Annotated[bool, typer.Option("--open", help="Open OAuth URL in default browser")] = False,
-    default: Annotated[bool, typer.Option("--default", "-d", help="Set as default account")] = False,
+    alias: Annotated[str, typer.Argument(help="账号简短别名（例如 acc1、pro、work）")],
+    note: Annotated[str, typer.Option("--note", "-n", help="可选备注标签")] = "",
+    from_file: Annotated[Optional[Path], typer.Option("--from-file", "-f", help="直接导入已有 ADC JSON 凭证文件")] = None,
+    open_browser: Annotated[bool, typer.Option("--open", help="自动在默认浏览器打开授权链接")] = False,
+    default: Annotated[bool, typer.Option("--default", "-d", help="设为默认账号")] = False,
 ) -> None:
-    """Shortcut for `auth add`."""
+    """新增 Google 账号（`auth add` 的快捷命令）。"""
     _do_auth_add(alias, note=note, from_file=from_file, open_browser=open_browser, set_default=default)
 
 
 @app.command("import")
 def top_import(
-    alias: Annotated[Optional[str], typer.Argument(help="Alias (auto-derived from email if omitted)")] = None,
-    note: Annotated[str, typer.Option("--note", "-n", help="Optional note/label")] = "",
-    copy_sessions: Annotated[bool, typer.Option("--copy-sessions/--no-copy-sessions")] = True,
-    default: Annotated[bool, typer.Option("--default", "-d", help="Set as default account")] = False,
+    alias: Annotated[Optional[str], typer.Argument(help="导入后的别名（省略则根据邮箱自动生成）")] = None,
+    note: Annotated[str, typer.Option("--note", "-n", help="可选备注标签")] = "",
+    copy_sessions: Annotated[
+        bool,
+        typer.Option("--copy-sessions/--no-copy-sessions", help="是否同时复制原生 sessions.json"),
+    ] = True,
+    default: Annotated[bool, typer.Option("--default", "-d", help="设为默认账号")] = False,
 ) -> None:
-    """Shortcut for `auth import`: import current native `colab` login."""
+    """一键导入本机原生 `colab` 已登录账号（`auth import` 快捷命令）。"""
     _do_auth_import(alias, note=note, copy_sessions=copy_sessions, set_default=default)
 
 
 @app.command("ls")
 def top_ls() -> None:
-    """Shortcut for `auth ls`: list all managed accounts."""
+    """列出所有已管理的账号（`auth ls` 快捷命令）。"""
     _do_auth_list()
 
 
 @app.command("use")
 def use_account(
-    alias: Annotated[str, typer.Argument(help="Account alias to set as default")],
+    alias: Annotated[str, typer.Argument(help="要设为默认的账号别名")],
     sync_keyring: Annotated[
         bool,
         typer.Option(
             "--sync-keyring",
-            help="Also write this account's token into native `colab` OS keyring",
+            help="同时将该账号 Token 写回原生 `colab` 的系统钥匙串",
         ),
     ] = False,
 ) -> None:
-    """Switch the default account (optionally syncing back to native `colab` keyring)."""
+    """切换默认账号（可选同步写回原生 `colab` 钥匙串）。"""
     store = _get_store()
     try:
         resolved = store.resolve_alias(alias)
         rec = store.set_default(resolved)
     except KeyError as e:
-        err_console.print(f"[red]Error:[/] {e}")
+        err_console.print(f"[red]错误:[/] {e}")
         raise typer.Exit(code=1)
 
-    msg = f"[green]Default account set to[/] [bold]{rec.alias}[/] ({rec.email or 'email unknown'})"
+    msg = f"[green]已将默认账号切换为[/] [bold]{rec.alias}[/] ({rec.email or '邮箱未知'})"
     if sync_keyring:
         try:
             sync_account_to_native_keyring(store, resolved)
-            msg += " [cyan](synced to native colab keyring)[/]"
+            msg += " [cyan]（已同步到原生 colab 系统钥匙串）[/]"
         except Exception as e:
-            err_console.print(f"[red]Failed to sync native keyring:[/] {e}")
+            err_console.print(f"[red]同步到系统钥匙串失败:[/] {e}")
             raise typer.Exit(code=1)
     console.print(msg)
 
 
 # ---------------------------------------------------------------------------
-# Multi-Account Usage, Sessions, and Smart Picker
+# 全账号算力查询、实例总览与智能选号
 # ---------------------------------------------------------------------------
 
 
@@ -529,46 +546,46 @@ def use_account(
 def usage_cmd(
     aliases: Annotated[
         Optional[List[str]],
-        typer.Argument(help="Specific account aliases to query (default: all accounts)"),
+        typer.Argument(help="指定要查询的账号别名（省略则并发查询全部账号）"),
     ] = None,
     sort: Annotated[
         str,
-        typer.Option("--sort", "-s", help="Sort by: balance, rate, active, name"),
+        typer.Option("--sort", "-s", help="排序字段：balance(余额) / rate(速率) / active(实例数) / name(别名)"),
     ] = "balance",
     asc: Annotated[
         bool,
-        typer.Option("--asc", help="Sort ascending instead of descending"),
+        typer.Option("--asc", help="改为升序排列（默认降序）"),
     ] = False,
     only_active: Annotated[
         bool,
-        typer.Option("--only-active", help="Only show accounts with active assignments"),
+        typer.Option("--only-active", help="仅显示当前有活跃实例的账号"),
     ] = False,
     min_balance: Annotated[
         Optional[float],
-        typer.Option("--min-balance", help="Filter accounts with balance >= N compute units"),
+        typer.Option("--min-balance", help="仅显示余额 >= 指定数值（CU）的账号"),
     ] = None,
     gpu: Annotated[
         Optional[str],
-        typer.Option("--gpu", help="Filter accounts eligible for this GPU (e.g. H100, A100, L4, T4)"),
+        typer.Option("--gpu", help="筛选支持该 GPU 的账号（如 H100、A100、L4、T4）"),
     ] = None,
     tpu: Annotated[
         Optional[str],
-        typer.Option("--tpu", help="Filter accounts eligible for this TPU (e.g. V6E1, V5E1)"),
+        typer.Option("--tpu", help="筛选支持该 TPU 的账号（如 V6E1、V5E1）"),
     ] = None,
     no_eligible: Annotated[
         bool,
-        typer.Option("--no-eligible", help="Hide Eligible GPUs/TPUs column for compact terminals"),
+        typer.Option("--no-eligible", help="隐藏“可用 GPU / TPU”列以适配超窄终端"),
     ] = False,
     watch: Annotated[
         Optional[int],
-        typer.Option("--watch", "-w", help="Continuously refresh every N seconds (Ctrl+C to exit)"),
+        typer.Option("--watch", "-w", help="每隔 N 秒自动刷新实时监控面板（按 Ctrl+C 退出）"),
     ] = None,
     as_json: Annotated[
         bool,
-        typer.Option("--json", help="Output machine-readable JSON"),
+        typer.Option("--json", help="输出结构化 JSON（便于脚本处理）"),
     ] = False,
 ) -> None:
-    """Query compute-unit balance, burn rate, active runtimes, and eligible GPUs/TPUs across all accounts."""
+    """并发查询所有账号的算力余额、消耗速率、活跃实例与可用 GPU/TPU。"""
     store = _get_store()
 
     def _query() -> List[AccountUsageReport]:
@@ -592,7 +609,7 @@ def usage_cmd(
                     ts = datetime.now().strftime("%H:%M:%S")
                     table = build_usage_renderable(
                         reports,
-                        title=f"Colab Multi-Account Usage (updated {ts}, every {interval}s)",
+                        title=f"Colab 多账号算力实时监控（更新于 {ts}，每 {interval} 秒刷新）",
                         show_eligible=not no_eligible,
                     )
                     live.update(table)
@@ -603,7 +620,7 @@ def usage_cmd(
     try:
         reports = _query()
     except KeyError as e:
-        err_console.print(f"[red]Error:[/] {e}")
+        err_console.print(f"[red]错误:[/] {e}")
         raise typer.Exit(code=1)
 
     if as_json:
@@ -617,7 +634,7 @@ def usage_cmd(
             },
             "accounts": [r.model_dump(mode="json") for r in reports],
         }
-        typer.echo(json.dumps(payload, indent=2))
+        typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
         return
 
     render_usage_table(console, reports, show_eligible=not no_eligible)
@@ -627,21 +644,21 @@ def usage_cmd(
 def sessions_cmd(
     aliases: Annotated[
         Optional[List[str]],
-        typer.Argument(help="Specific account aliases to query (default: all accounts)"),
+        typer.Argument(help="指定要查询的账号别名（省略则查询全部账号）"),
     ] = None,
-    as_json: Annotated[bool, typer.Option("--json", help="Output JSON")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help="以 JSON 格式输出")] = False,
 ) -> None:
-    """List all active remote Colab runtimes across all managed accounts."""
+    """跨账号列出所有正在运行的远端 Colab 实例（含网页端开启的实例）。"""
     store = _get_store()
     try:
         reports = fetch_accounts_usage_concurrent(store, aliases or None, include_assignments=True)
     except KeyError as e:
-        err_console.print(f"[red]Error:[/] {e}")
+        err_console.print(f"[red]错误:[/] {e}")
         raise typer.Exit(code=1)
 
     if as_json:
         items = [a.model_dump(mode="json") for r in reports if r.ok for a in r.assignments]
-        typer.echo(json.dumps(items, indent=2))
+        typer.echo(json.dumps(items, indent=2, ensure_ascii=False))
         return
 
     render_sessions_table(console, reports)
@@ -649,13 +666,13 @@ def sessions_cmd(
 
 @app.command("pick")
 def pick_cmd(
-    gpu: Annotated[Optional[str], typer.Option("--gpu", help="Require eligibility for this GPU (e.g. A100, H100, T4)")] = None,
-    tpu: Annotated[Optional[str], typer.Option("--tpu", help="Require eligibility for this TPU (e.g. V5E1, V6E1)")] = None,
-    idle: Annotated[bool, typer.Option("--idle", help="Require 0 currently active assignments")] = False,
-    min_balance: Annotated[Optional[float], typer.Option("--min-balance", help="Minimum CU balance required")] = None,
-    as_json: Annotated[bool, typer.Option("--json", help="Output full JSON for the chosen account")] = False,
+    gpu: Annotated[Optional[str], typer.Option("--gpu", help="要求支持该 GPU（如 A100、H100、T4）")] = None,
+    tpu: Annotated[Optional[str], typer.Option("--tpu", help="要求支持该 TPU（如 V5E1、V6E1）")] = None,
+    idle: Annotated[bool, typer.Option("--idle", help="要求当前无活跃运行实例（空闲号）")] = False,
+    min_balance: Annotated[Optional[float], typer.Option("--min-balance", help="要求最低算力余额（CU）")] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="输出选中账号的完整 JSON 信息")] = False,
 ) -> None:
-    """Pick the best available account (highest balance matching optional GPU/TPU/idle filters)."""
+    """智能挑选最优账号（按条件筛选并返回余额最高的健康账号别名）。"""
     store = _get_store()
     try:
         best = _pick_best_account(
@@ -666,17 +683,17 @@ def pick_cmd(
             min_balance=min_balance,
         )
     except Exception as e:
-        err_console.print(f"[red]Error:[/] {e}")
+        err_console.print(f"[red]错误:[/] {e}")
         raise typer.Exit(code=1)
 
     if as_json:
-        typer.echo(json.dumps(best.model_dump(mode="json"), indent=2))
+        typer.echo(json.dumps(best.model_dump(mode="json"), indent=2, ensure_ascii=False))
     else:
         typer.echo(best.alias)
 
 
 # ---------------------------------------------------------------------------
-# Proxy Execution, Stop, and Shell Env
+# 透传执行、实例关停与终端环境导出
 # ---------------------------------------------------------------------------
 
 
@@ -688,13 +705,13 @@ def run_cmd(
     ctx: typer.Context,
     alias: Annotated[
         str,
-        typer.Argument(help="Account alias, 'default', or 'best' (auto-pick highest balance)"),
+        typer.Argument(help="账号别名，或使用 'default'（默认号）/ 'best'（自动选最高余额号）"),
     ],
 ) -> None:
-    """Run any native `colab` command under a specific account (transparent TTY passthrough)."""
+    """以指定账号透明透传执行任意原生 `colab` 命令（完整保留交互式 TTY）。"""
     colab_args = list(ctx.args)
     if not colab_args:
-        err_console.print("[red]Error:[/] Provide a colab subcommand, e.g. `cm run acc1 sessions`.")
+        err_console.print("[red]错误:[/] 请在账号别名后提供原生 colab 子命令，例如 `cm run main sessions`。")
         raise typer.Exit(code=1)
 
     _dispatch_proxy(alias, colab_args)
@@ -710,39 +727,39 @@ def _dispatch_proxy(alias_or_special: str, colab_args: List[str]) -> None:
             best = _pick_best_account(store, gpu=gpu_hint, tpu=tpu_hint)
             target = best.alias
             err_console.print(
-                f"[dim][colabm] Auto-selected account '[bold]{target}[/]' "
-                f"(balance: {best.balance:.2f} CU, active: {best.assignments_count})[/]"
+                f"[dim][colabm] 已自动选中账号 '[bold]{target}[/]' "
+                f"（余额: {best.balance:.2f} CU，活跃实例: {best.assignments_count}）[/]"
             )
         except Exception as e:
-            err_console.print(f"[red]Error selecting best account:[/] {e}")
+            err_console.print(f"[red]自动选号失败:[/] {e}")
             raise typer.Exit(code=1)
 
     try:
         rc = run_colab_command(store, target, colab_args)
     except (KeyError, FileNotFoundError) as e:
-        err_console.print(f"[red]Error:[/] {e}")
+        err_console.print(f"[red]错误:[/] {e}")
         raise typer.Exit(code=1)
     raise typer.Exit(code=rc)
 
 
 @app.command("stop")
 def stop_cmd(
-    alias: Annotated[str, typer.Argument(help="Account alias (or 'all' with --all)")],
+    alias: Annotated[str, typer.Argument(help="账号别名（配合 --all 时可传 'all' 表示全部账号）")],
     target: Annotated[
         Optional[str],
-        typer.Argument(help="Session name or endpoint ID to unassign"),
+        typer.Argument(help="要停止的本地会话名或远端节点 ID"),
     ] = None,
     stop_all: Annotated[
         bool,
-        typer.Option("--all", help="Unassign ALL active remote runtimes for the account(s)"),
+        typer.Option("--all", help="关停该账号（或全部账号）下所有正在运行的远端实例"),
     ] = False,
-    yes: Annotated[bool, typer.Option("-y", "--yes", help="Skip confirmation prompt")] = False,
+    yes: Annotated[bool, typer.Option("-y", "--yes", help="跳过确认提示")] = False,
 ) -> None:
-    """Stop/unassign remote Colab runtimes (including untracked web sessions)."""
+    """关停/释放远端 Colab 实例（支持一键清理包括网页端开启的全部实例）。"""
     store = _get_store()
     if alias.lower() == "all":
         if not stop_all:
-            err_console.print("[red]Error:[/] Pass `--all` when targeting `all` accounts.")
+            err_console.print("[red]错误:[/] 针对 `all` 全部账号操作时必须显式加上 `--all` 参数。")
             raise typer.Exit(code=1)
         state = store.load()
         target_aliases = sorted(state.accounts.keys())
@@ -750,12 +767,12 @@ def stop_cmd(
         try:
             target_aliases = [store.resolve_alias(alias)]
         except KeyError as e:
-            err_console.print(f"[red]Error:[/] {e}")
+            err_console.print(f"[red]错误:[/] {e}")
             raise typer.Exit(code=1)
 
     if stop_all and not yes:
         confirmed = typer.confirm(
-            f"Unassign ALL active runtimes for {', '.join(target_aliases)}?"
+            f"确认关停以下账号下的全部活跃实例：{', '.join(target_aliases)}？"
         )
         if not confirmed:
             raise typer.Exit(code=0)
@@ -767,48 +784,48 @@ def stop_cmd(
             total_stopped += len(stopped)
             if stopped:
                 for ep in stopped:
-                    console.print(f"[green][{acct}] Stopped[/] {ep}")
+                    console.print(f"[green][{acct}] 已关停实例[/] {ep}")
             else:
-                console.print(f"[dim][{acct}] No active runtimes to stop.[/]")
+                console.print(f"[dim][{acct}] 当前无运行中实例。[/]")
         except Exception as e:
-            err_console.print(f"[red][{acct}] Failed to stop:[/] {e}")
+            err_console.print(f"[red][{acct}] 关停失败:[/] {e}")
 
     if stop_all:
-        console.print(f"[bold]Total stopped:[/] {total_stopped}")
+        console.print(f"[bold]共关停实例数:[/] {total_stopped}")
 
 
 @app.command("env")
 def env_cmd(
-    alias: Annotated[Optional[str], typer.Argument(help="Account alias (default: current default account)")] = None,
-    shell: Annotated[str, typer.Option("--shell", help="Shell syntax: posix (zsh/bash) or fish")] = "posix",
+    alias: Annotated[Optional[str], typer.Argument(help="账号别名（省略则使用默认账号）")] = None,
+    shell: Annotated[str, typer.Option("--shell", help="Shell 语法类型：posix（zsh/bash）或 fish")] = "posix",
 ) -> None:
-    """Print shell export + alias snippet so `eval \"$(cm env <alias>)\"` pins this terminal to one account."""
+    """输出环境变量与 alias 片段，执行 `eval \"$(cm env <别名>)\"` 即可将当前终端固定为该账号。"""
     store = _get_store()
     try:
         snippet = generate_shell_env(store, alias or "default", shell=shell)
     except (KeyError, FileNotFoundError) as e:
-        err_console.print(f"[red]Error:[/] {e}")
+        err_console.print(f"[red]错误:[/] {e}")
         raise typer.Exit(code=1)
     typer.echo(snippet)
 
 
 @app.command("version")
 def version_cmd() -> None:
-    """Show colab-manager version and config path."""
+    """显示 colab-manager 版本号与本地配置目录。"""
     store = _get_store()
-    console.print(f"colab-manager [bold]{__version__}[/] (config: {store.root})")
+    console.print(f"colab-manager [bold]{__version__}[/]（配置目录: {store.root}）")
 
 
 def main() -> None:
-    """Entry point supporting `@<alias>` shortcut syntax before Typer routing."""
+    """入口函数：在 Typer 解析前优先支持 `cm @<别名> ...` 快捷透传语法。"""
     if len(sys.argv) >= 2 and sys.argv[1].startswith("@"):
         alias = sys.argv[1][1:]
         forwarded = sys.argv[2:]
         if not alias:
-            err_console.print("[red]Error:[/] Specify an account alias after '@', e.g. `cm @acc1 usage`.")
+            err_console.print("[red]错误:[/] 请在 '@' 后指定账号别名，例如 `cm @main usage`。")
             raise SystemExit(1)
         if not forwarded:
-            err_console.print(f"[red]Error:[/] Provide a colab command after '@{alias}', e.g. `cm @{alias} sessions`.")
+            err_console.print(f"[red]错误:[/] 请在 '@{alias}' 后提供要执行的 colab 子命令，例如 `cm @{alias} sessions`。")
             raise SystemExit(1)
         try:
             _dispatch_proxy(alias, forwarded)

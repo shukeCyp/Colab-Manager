@@ -32,13 +32,12 @@ def get_manager_home() -> Path:
 def validate_alias(alias: str) -> str:
     alias = alias.strip()
     if not alias:
-        raise ValueError("Account alias cannot be empty.")
+        raise ValueError("账号别名不能为空。")
     if alias.lower() in RESERVED_ALIASES:
-        raise ValueError(f"Alias '{alias}' is reserved. Choose a different name.")
+        raise ValueError(f"别名 '{alias}' 为保留关键字，请换一个名称。")
     if not ALIAS_PATTERN.match(alias):
         raise ValueError(
-            f"Invalid alias '{alias}'. Use 1-32 characters: letters, digits, '.', '_', '-' "
-            "(must start with a letter or digit)."
+            f"非法别名 '{alias}'：请使用 1-32 位字母、数字、'.'、'_' 或 '-'（且必须以字母或数字开头）。"
         )
     return alias
 
@@ -130,7 +129,7 @@ class AccountStore:
         state = self.load()
         if not state.accounts:
             raise KeyError(
-                "No accounts registered yet. Run `cm auth import` or `cm auth add <alias>` first."
+                "尚未添加任何账号。请先运行 `cm import` 或 `cm add <别名>`。"
             )
         if alias is None or alias == "default":
             if state.default_account and state.default_account in state.accounts:
@@ -139,7 +138,7 @@ class AccountStore:
             return first
         if alias not in state.accounts:
             known = ", ".join(sorted(state.accounts.keys()))
-            raise KeyError(f"Unknown account '{alias}'. Registered accounts: {known}")
+            raise KeyError(f"未找到账号 '{alias}'。当前已注册账号: {known}")
         return alias
 
     def find_by_email(self, email: str) -> Optional[AccountRecord]:
@@ -213,7 +212,7 @@ class AccountStore:
         cred_file = self.credentials_path(alias)
         if not cred_file.exists():
             raise FileNotFoundError(
-                f"Credentials file not found for account '{alias}': {cred_file}"
+                f"找不到账号 '{alias}' 的凭证文件: {cred_file}"
             )
         return json.loads(cred_file.read_text(encoding="utf-8"))
 
@@ -221,7 +220,7 @@ class AccountStore:
         with self._lock():
             state = self._load_unlocked()
             if alias not in state.accounts:
-                raise KeyError(f"Unknown account '{alias}'.")
+                raise KeyError(f"未找到账号 '{alias}'。")
             state.default_account = alias
             self._save_unlocked(state)
             return state.accounts[alias]
@@ -230,7 +229,7 @@ class AccountStore:
         with self._lock():
             state = self._load_unlocked()
             if alias not in state.accounts:
-                raise KeyError(f"Unknown account '{alias}'.")
+                raise KeyError(f"未找到账号 '{alias}'。")
             rec = state.accounts[alias]
             rec.note = note
             rec.updated_at = utc_now()
@@ -254,9 +253,9 @@ class AccountStore:
         with self._lock():
             state = self._load_unlocked()
             if old_alias not in state.accounts:
-                raise KeyError(f"Unknown account '{old_alias}'.")
+                raise KeyError(f"未找到账号 '{old_alias}'。")
             if new_alias in state.accounts:
-                raise ValueError(f"Account '{new_alias}' already exists.")
+                raise ValueError(f"账号别名 '{new_alias}' 已存在。")
 
             old_dir = self.account_dir(old_alias)
             new_dir = self.account_dir(new_alias)
@@ -276,7 +275,7 @@ class AccountStore:
         with self._lock():
             state = self._load_unlocked()
             if alias not in state.accounts:
-                raise KeyError(f"Unknown account '{alias}'.")
+                raise KeyError(f"未找到账号 '{alias}'。")
             rec = state.accounts.pop(alias)
             acct_dir = self.account_dir(alias)
             if acct_dir.exists():
