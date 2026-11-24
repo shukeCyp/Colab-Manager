@@ -68,7 +68,7 @@ def run_interactive_oauth_flow(
     flow.redirect_uri = REMOTE_REDIRECT_URI
 
     url_kwargs: Dict[str, Any] = {
-        "prompt": "consent",
+        "prompt": "consent" if login_hint else "select_account consent",
         "access_type": "offline",
         "token_usage": "remote",
     }
